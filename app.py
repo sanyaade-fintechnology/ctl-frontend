@@ -6,7 +6,7 @@ import sys
 import logging
 import json
 import argparse
-import error
+from zmapi.codes import error
 import uuid
 from time import time, gmtime
 from pprint import pprint, pformat
