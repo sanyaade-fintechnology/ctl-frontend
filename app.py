@@ -7,13 +7,14 @@ import logging
 import json
 import argparse
 from zmapi.codes import error
+from zmapi.zmq import SockRecvPublisher
 import uuid
 from time import time, gmtime
 from pprint import pprint, pformat
 
 ################################## CONSTANTS ##################################
 
-MODULE_NAME = "ctlbouncer"
+MODULE_NAME = "frontend"
 
 ################################# EXCEPTIONS ##################################
 
@@ -46,36 +47,6 @@ def ident_to_str(ident):
 
 ###############################################################################
 
-async def dealer_result_publisher():
-    L.info("dealer_result_publisher running ...")
-    g.sock_deal_pub = g.ctx.socket(zmq.PUB)
-    g.sock_deal_pub.bind("inproc://deal_pub")
-    while True:
-        msg_parts = await g.sock_deal.recv_multipart()
-        msg = msg_parts[-1]
-        if len(msg) == 0:
-            msg_id = b"PING"
-        else:
-            msg = json.loads(msg.decode())
-            msg_id = msg["msg_id"].encode()
-        g.sock_deal_pub.send_multipart([msg_id] + msg_parts)
-
-async def poll_for_msg_id(msg_id=None, timeout=None):
-    sock = g.ctx.socket(zmq.SUB)
-    sock.connect("inproc://deal_pub")
-    sock.subscribe(msg_id.encode())
-    poller = zmq.asyncio.Poller()
-    poller.register(sock, zmq.POLLIN)
-    res = await poller.poll(timeout)
-    if not res:
-        return
-    msg_parts = await sock.recv_multipart()
-    sock.close()
-    # skip the topic
-    return msg_parts[1:]
-
-###############################################################################
-
 async def run_ctl_interceptor():
     L.info("run_ctl_interceptor running ...")
     while True:
@@ -88,7 +59,7 @@ async def run_ctl_interceptor():
         if len(msg) == 0:
             # handle ping message
             await g.sock_deal.send_multipart(msg_parts)
-            res = await poll_for_msg_id("PING")
+            res = await g.sock_deal_pub.poll_for_pong()
             await g.sock_ctl.send_multipart(res)
             continue
         create_task(handle_msg_1(ident, msg))
@@ -151,7 +122,7 @@ async def handle_msg_2(ident, msg):
     msg_bytes = " " + json.dumps(msg)
     msg_bytes = msg_bytes.encode()
     await g.sock_deal.send_multipart(ident + [b"", msg_bytes])
-    res = await poll_for_msg_id(msg["msg_id"])
+    res = await g.sock_deal_pub.poll_for_msg_id(msg["msg_id"])
     L.debug("< " + debug_str)
     await g.sock_ctl.send_multipart(res)
 
@@ -194,6 +165,7 @@ def init_zmq_sockets(args):
     g.sock_deal = g.ctx.socket(zmq.DEALER)
     g.sock_deal.setsockopt_string(zmq.IDENTITY, MODULE_NAME)
     g.sock_deal.connect(args.ctl_addr_up)
+    g.sock_deal_pub = SockRecvPublisher(g.ctx, g.sock_deal)
     g.sock_ctl = g.ctx.socket(zmq.ROUTER)
     g.sock_ctl.bind(args.ctl_addr_down)
 
@@ -203,7 +175,7 @@ def main():
     L = build_logger(args)
     init_zmq_sockets(args)
     tasks = [
-        create_task(dealer_result_publisher()),
+        create_task(g.sock_deal_pub.run()),
         create_task(run_ctl_interceptor()),
     ]
     g.loop.run_until_complete(asyncio.gather(*tasks))
