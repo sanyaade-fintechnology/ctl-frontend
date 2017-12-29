@@ -10,6 +10,7 @@ from zmapi.codes import error
 from zmapi.zmq import SockRecvPublisher
 import uuid
 from time import time, gmtime
+from datetime import datetime
 from pprint import pprint, pformat
 
 ################################## CONSTANTS ##################################
@@ -39,6 +40,10 @@ class GlobalState:
 g = GlobalState()
 g.loop = asyncio.get_event_loop()
 g.ctx = zmq.asyncio.Context()
+g.startup_time = datetime.utcnow()
+g.num_messages_handled = 0
+g.num_msg_ids_added = 0
+g.num_invalid_messages = 0
 
 ################################### HELPERS ###################################
 
@@ -55,6 +60,7 @@ async def run_ctl_interceptor():
             ident, msg = split_message(msg_parts)
         except ValueError as err:
             L.error(str(err))
+            g.num_invalid_messages += 1
             continue
         if len(msg) == 0:
             # handle ping message
@@ -77,10 +83,12 @@ def split_message(msg_parts):
     return ident, msg
 
 async def handle_msg_1(ident, raw_msg):
+    g.num_messages_handled += 1
     try:
         msg = parse_message(raw_msg)
         if "msg_id" not in msg:
             msg["msg_id"] = generate_msg_id()
+            g.num_msg_ids_added += 1
         else:
             msg["msg_id"] = str(msg["msg_id"])
         res = await handle_msg_2(ident, msg)
@@ -95,6 +103,7 @@ async def handle_msg_1(ident, raw_msg):
         await send_error(ident, msg["msg_id"], error.ARGS, str(e))
 
 async def send_error(ident, msg_id, ecode, msg=None):
+    g.num_invalid_messages += 1
     msg = error.gen_error(ecode, msg)
     msg["msg_id"] = msg_id
     msg = " " + json.dumps(msg)
@@ -122,9 +131,21 @@ async def handle_msg_2(ident, msg):
     msg_bytes = " " + json.dumps(msg)
     msg_bytes = msg_bytes.encode()
     await g.sock_deal.send_multipart(ident + [b"", msg_bytes])
-    res = await g.sock_deal_pub.poll_for_msg_id(msg["msg_id"])
+    msg_parts = await g.sock_deal_pub.poll_for_msg_id(msg["msg_id"])
+    if cmd == "get_status":
+        msg = json.loads(msg_parts[-1].decode())
+        status = {
+            "name": MODULE_NAME,
+            "uptime": (datetime.utcnow() - g.startup_time).total_seconds(),
+            "num_messages_handled": g.num_messages_handled,
+            "num_msg_ids_added": g.num_msg_ids_added,
+            "num_invalid_messages": g.num_invalid_messages,
+        }
+        msg["content"].insert(0, status)
+        msg_bytes = (" " + json.dumps(msg)).encode()
+        msg_parts[-1] = msg_bytes
     L.debug("< " + debug_str)
-    await g.sock_ctl.send_multipart(res)
+    await g.sock_ctl.send_multipart(msg_parts)
 
 def generate_msg_id():
     return str(uuid.uuid4())
