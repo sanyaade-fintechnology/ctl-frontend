@@ -8,6 +8,7 @@ import json
 import argparse
 from zmapi.codes import error
 from zmapi.zmq import SockRecvPublisher
+from zmapi.logging import setup_root_logger
 import uuid
 from time import time, gmtime
 from datetime import datetime
@@ -33,7 +34,7 @@ class CommandNotImplemented(Exception):
 
 ################################### GLOBALS ###################################
 
-L = None
+L = logging.root
 
 class GlobalState:
     pass
@@ -125,7 +126,7 @@ async def handle_msg_2(ident, msg):
     cmd = msg.get("command")
     if not cmd:
         raise InvalidArguments("command missing")
-    debug_str = "ident:{}, command:{}, msg_id:{}"
+    debug_str = "ident={}, command={}, msg_id={}"
     debug_str = debug_str.format(ident_to_str(ident), cmd, msg["msg_id"])
     L.debug("> " + debug_str)
     msg_bytes = " " + json.dumps(msg)
@@ -167,20 +168,8 @@ def parse_args():
         pass
     return args
 
-def build_logger(args):
-    logging.root.setLevel(args.log_level)
-    logger = logging.getLogger(__name__)
-    logger.propagate = False
-    logger.handlers.clear()
-    fmt = "%(asctime)s.%(msecs)03d [%(levelname)s] %(message)s"
-    datefmt = "%H:%M:%S"
-    formatter = logging.Formatter(fmt=fmt, datefmt=datefmt)
-    # convert datetime to utc
-    formatter.converter = gmtime
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    return logger
+def setup_logging(args):
+    setup_root_logger(args.log_level)
 
 def init_zmq_sockets(args):
     g.sock_deal = g.ctx.socket(zmq.DEALER)
@@ -193,7 +182,7 @@ def init_zmq_sockets(args):
 def main():
     global L
     args = parse_args()
-    L = build_logger(args)
+    setup_logging(args)
     init_zmq_sockets(args)
     tasks = [
         create_task(g.sock_deal_pub.run()),
