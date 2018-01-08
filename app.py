@@ -154,7 +154,7 @@ def generate_msg_id():
 ###############################################################################
 
 def parse_args():
-    desc = "input sanitizer for ctl sockets"
+    desc = "Input sanitizer for CTL sockets"
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument("ctl_addr_up",
                         help="address of the upstream ctl socket")
