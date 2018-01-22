@@ -98,7 +98,7 @@ sanitize_subscribe = [
 
 sanitize_unsubscribe = [[("ticker_id", str)]]
 
-sanitize_get_ticker_info = [("ticker", dict)]
+# sanitize_get_ticker_info = [[("ticker", dict)]]
 
 sanitize_get_snapshot = [
     [("ticker_id", str)],
@@ -116,14 +116,10 @@ def populate_sanitizers():
             if callable(v):
                 SANITIZERS[cmd] = v
             else:
+                req = v[0] if v[0] is not None else []
+                opt = []
                 if len(v) == 2:
-                    req = v[0] if v[0] is not None else []
                     opt = v[1] if v[1] is not None else []
-                elif len(v) == 1:
-                    req = v[0]
-                    opt = []
-                else:
-                    raise Exception("incorrect sanitizer specs definition")
                 f = lambda x, req=req, opt=opt: \
                         check_content(x["content"], req, opt)
                 SANITIZERS[cmd] = f
