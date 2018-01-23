@@ -88,7 +88,8 @@ def check_content(d, req_specs, opt_specs):
 # sanitize_* can be specs argument for check_content function or function
 # defining the arguments checking procedure.
 
-sanitize_subscribe = [
+sanitize_modify_subscription = [
+    [],
     [("ticker_id", str),
     ("order_book_speed", int, 0, 10),
     ("trades_speed", int, 0, 10),
