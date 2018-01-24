@@ -122,7 +122,7 @@ def populate_sanitizers():
                 if len(v) == 2:
                     opt = v[1] if v[1] is not None else []
                 f = lambda x, req=req, opt=opt: \
-                        check_content(x["content"], req, opt)
+                        check_content(x, req, opt)
                 SANITIZERS[cmd] = f
 populate_sanitizers()
             
@@ -141,7 +141,9 @@ async def send_error(ident, msg_id, ecode, what=None):
 def sanitize_msg(msg):
     sanitizer = SANITIZERS.get(msg["command"])
     if sanitizer:
-        sanitizer(msg)
+        if "content" not in msg:
+            raise InvalidArgumentsException("content missing")
+        sanitizer(msg["content"])
 
 async def handle_msg_2(ident, msg):
     cmd = msg.get("command")
