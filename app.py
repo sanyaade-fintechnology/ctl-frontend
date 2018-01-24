@@ -146,7 +146,7 @@ def sanitize_msg(msg):
 async def handle_msg_2(ident, msg):
     cmd = msg.get("command")
     if not cmd:
-        raise InvalidArguments("command missing")
+        raise InvalidArgumentsException("command missing")
     sanitize_msg(msg)
     debug_str = "ident={}, command={}, msg_id={}"
     debug_str = debug_str.format(ident_to_str(ident), cmd, msg["msg_id"])
